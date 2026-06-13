@@ -5,7 +5,14 @@ IMAGE="${IMAGE:-ghcr.io/ghmfreitas/heyform:production}"
 SERVICE="${SERVICE:-heyform}"
 DEPLOY_SCRIPT="${DEPLOY_SCRIPT:-/home/gustavo/bin/deploy-heyform-production}"
 
-docker pull "$IMAGE"
+if ! docker pull "$IMAGE"; then
+  echo "Unable to pull $IMAGE; checking for a local image with the same tag" >&2
+  if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    echo "Image $IMAGE is not pullable and is not present locally" >&2
+    exit 1
+  fi
+  echo "Using local image $IMAGE"
+fi
 
 new_image_id="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
 current_image_id="$(docker inspect "$SERVICE" --format '{{.Image}}' 2>/dev/null || true)"

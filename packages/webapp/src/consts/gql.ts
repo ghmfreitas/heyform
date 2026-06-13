@@ -572,6 +572,7 @@ export const FORM_DETAIL_GQL = gql`
         metaTitle
         metaDescription
         metaOGImageUrl
+        removeBranding
       }
       drafts {
         id
@@ -1423,6 +1424,7 @@ export const PUBLIC_FORM_GQL = gql`
         enableClosedMessage
         closedFormTitle
         closedFormDescription
+        removeBranding
       }
       drafts {
         id

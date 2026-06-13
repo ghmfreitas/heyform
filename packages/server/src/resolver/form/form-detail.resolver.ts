@@ -36,6 +36,10 @@ export class FormDetailResolver {
       form.name = DEFAULT_FORM_NAME
     }
 
+    if (form.settings) {
+      form.settings.removeBranding = team.removeBranding
+    }
+
     return form
   }
 }

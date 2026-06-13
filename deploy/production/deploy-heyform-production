@@ -1,0 +1,137 @@
+#!/bin/sh
+set -eu
+
+COMPOSE_FILE="${COMPOSE_FILE:-/srv/apps/heyform/docker-compose.yml}"
+SERVICE="${SERVICE:-heyform}"
+UPLOAD_SOURCE="${UPLOAD_SOURCE:-/app/packages/server/static/upload}"
+UPLOAD_TARGET="${UPLOAD_TARGET:-/srv/data/heyform/assets}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:9157/health/ready}"
+
+IMAGE="${1:-}"
+
+case "$IMAGE" in
+  ghcr.io/ghmfreitas/heyform@sha256:*|ghcr.io/ghmfreitas/heyform:*)
+    ;;
+  *)
+    echo "Refusing to deploy unexpected image: $IMAGE" >&2
+    exit 64
+    ;;
+esac
+
+if [ ! -f "$COMPOSE_FILE" ]; then
+  echo "Compose file not found: $COMPOSE_FILE" >&2
+  exit 66
+fi
+
+if [ ! -d "$UPLOAD_TARGET" ]; then
+  echo "Upload target not found: $UPLOAD_TARGET" >&2
+  exit 66
+fi
+
+timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+backup_file="${COMPOSE_FILE}.backup.${timestamp}"
+tmp_compose="$(mktemp)"
+tmp_uploads="$(mktemp -d)"
+
+cleanup() {
+  rm -f "$tmp_compose"
+  rm -rf "$tmp_uploads"
+}
+trap cleanup EXIT
+
+wait_for_health() {
+  i=0
+  while [ "$i" -lt 45 ]; do
+    if docker exec "$SERVICE" node -e "fetch('$HEALTH_URL').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" >/dev/null 2>&1; then
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 2
+  done
+  return 1
+}
+
+migrate_uploads() {
+  if ! docker inspect "$SERVICE" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! docker exec "$SERVICE" test -d "$UPLOAD_SOURCE" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  docker cp "${SERVICE}:${UPLOAD_SOURCE}/." "$tmp_uploads/" >/dev/null
+
+  (
+    cd "$tmp_uploads"
+    find . -type f | while IFS= read -r file; do
+      target="${UPLOAD_TARGET}/${file#./}"
+      if [ ! -e "$target" ]; then
+        mkdir -p "$(dirname "$target")"
+        cp -p "$file" "$target"
+      fi
+    done
+  )
+}
+
+render_compose() {
+  awk -v image="$IMAGE" '
+    /^  heyform:$/ {
+      in_heyform = 1
+      print
+      next
+    }
+    /^  [A-Za-z0-9_-]+:$/ && $0 !~ /^  heyform:$/ {
+      in_heyform = 0
+    }
+    in_heyform && /^[[:space:]]+image:/ {
+      print "    image: " image
+      replaced_image = 1
+      next
+    }
+    in_heyform {
+      gsub("/srv/data/heyform/assets:/app/static/upload", "/srv/data/heyform/assets:/app/packages/server/static/upload")
+    }
+    {
+      print
+    }
+    END {
+      if (!replaced_image) {
+        exit 42
+      }
+    }
+  ' "$COMPOSE_FILE" > "$tmp_compose"
+}
+
+rollback() {
+  echo "Deployment failed; rolling back to $backup_file" >&2
+  cp "$backup_file" "$COMPOSE_FILE"
+  docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
+  wait_for_health || true
+}
+
+echo "Migrating current container uploads into $UPLOAD_TARGET when needed"
+migrate_uploads
+
+echo "Pulling $IMAGE"
+docker pull "$IMAGE"
+
+render_compose
+cp "$COMPOSE_FILE" "$backup_file"
+cp "$tmp_compose" "$COMPOSE_FILE"
+
+docker compose -f "$COMPOSE_FILE" config --quiet
+
+if ! docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"; then
+  rollback
+  exit 1
+fi
+
+if ! wait_for_health; then
+  docker logs --tail 120 "$SERVICE" >&2 || true
+  rollback
+  exit 1
+fi
+
+docker compose -f "$COMPOSE_FILE" ps "$SERVICE"
+echo "Deployed $IMAGE"

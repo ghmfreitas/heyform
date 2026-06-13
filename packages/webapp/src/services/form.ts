@@ -29,6 +29,7 @@ import {
   FORM_INTEGRATIONS_GQL,
   FORM_REPORT_GQL,
   FORM_SUMMARY_GQL,
+  IMPORT_FORM_FROM_JSON_GQL,
   IMPORT_FORM_GQL,
   MOVE_FORM_TO_PROJECT_GQL,
   MOVE_FORM_TO_TRASH_GQL,
@@ -153,6 +154,18 @@ export class FormService {
         input: {
           projectId,
           url
+        }
+      }
+    })
+  }
+
+  static importFromJSON(projectId: string, formJson: string): Promise<string> {
+    return apollo.mutate({
+      mutation: IMPORT_FORM_FROM_JSON_GQL,
+      variables: {
+        input: {
+          projectId,
+          formJson
         }
       }
     })

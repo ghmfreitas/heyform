@@ -18,6 +18,14 @@ export interface TemplatesModelProps {
   onBack: () => void
 }
 
+function getGraphQLErrorMessage(error: unknown): string | undefined {
+  const message = (error as any)?.graphQLErrors?.[0]?.message
+
+  if (typeof message === 'string' && message.trim()) {
+    return message
+  }
+}
+
 interface TemplatePreviewProps extends TemplatesModelProps {
   template: TemplateType
 }
@@ -162,10 +170,9 @@ export default function TemplatesModel({ onBack }: TemplatesModelProps) {
       } catch (error) {
         toast({
           title: t('components.error.title'),
-          message: t(
-            'form.template.importError',
-            'Failed to import form. Please check the JSON format.'
-          )
+          message:
+            getGraphQLErrorMessage(error) ||
+            t('form.template.importError', 'Failed to import form. Please check the JSON format.')
         })
       }
     },

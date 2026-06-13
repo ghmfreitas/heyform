@@ -74,7 +74,7 @@ export class TranslateFormQueue extends BaseQueue {
     if (helper.isValid(translations)) {
       const openai = new OpenAI({
         apiKey: OPENAI_API_KEY,
-        baseURL: OPENAI_BASE_URL
+        baseURL: helper.isValid(OPENAI_BASE_URL) ? OPENAI_BASE_URL : undefined
       })
 
       const { choices } = await openai.chat.completions.create({
@@ -82,11 +82,7 @@ export class TranslateFormQueue extends BaseQueue {
         response_format: {
           type: 'json_object'
         },
-        temperature: 0,
         max_tokens: 1000,
-        top_p: 1,
-        frequency_penalty: 1,
-        presence_penalty: 1,
         stream: false,
         messages: [
           {

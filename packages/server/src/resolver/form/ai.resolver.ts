@@ -14,6 +14,7 @@ import {
   createThemePrompt
 } from '@config'
 import { Auth, Form, FormGuard, ProjectGuard, Team, User } from '@decorator'
+import { OPENAI_API_KEY } from '@environments'
 import {
   CreateFieldsWithAIInput,
   CreateFormThemeWithAIInput,
@@ -180,11 +181,24 @@ export class AIResolver {
   }
 
   private getPlan(team: TeamModel): TeamPlan {
-    return (team as TeamWithPlan).plan || {}
+    const plan = (team as TeamWithPlan).plan || {}
+
+    if (helper.isValid(OPENAI_API_KEY)) {
+      return {
+        ...plan,
+        aiForm: true,
+        themeCustomization: true
+      }
+    }
+
+    return plan
   }
 
   private async createAIJson<T>(prompt: string, errorMessage: string): Promise<T> {
     const result = await this.openAIService.chatCompletion({
+      response_format: {
+        type: 'json_object'
+      },
       messages: [
         {
           role: 'user',

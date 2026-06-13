@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+IMAGE="${IMAGE:-ghcr.io/ghmfreitas/heyform:production}"
+SERVICE="${SERVICE:-heyform}"
+DEPLOY_SCRIPT="${DEPLOY_SCRIPT:-/home/gustavo/bin/deploy-heyform-production}"
+
+docker pull "$IMAGE"
+
+new_image_id="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
+current_image_id="$(docker inspect "$SERVICE" --format '{{.Image}}' 2>/dev/null || true)"
+
+if [ "$new_image_id" = "$current_image_id" ]; then
+  echo "HeyForm already running $IMAGE ($new_image_id)"
+  exit 0
+fi
+
+exec "$DEPLOY_SCRIPT" "$IMAGE"

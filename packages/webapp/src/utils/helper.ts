@@ -80,7 +80,7 @@ export function insertStyle(id: string, style: string) {
     document.head.appendChild(styleElement)
   }
 
-  styleElement.innerHTML = style
+  styleElement.textContent = style
 }
 
 export function isPhoneNumber(arg: any): boolean {
@@ -137,7 +137,7 @@ export function insertThemeStyle(customTheme?: FormTheme) {
     content += customTheme!.customCSS
   }
 
-  style.innerHTML = content
+  style.textContent = content
 }
 
 export function getFileUploadValue(v: any) {

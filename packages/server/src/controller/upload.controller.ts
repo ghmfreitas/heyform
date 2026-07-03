@@ -2,45 +2,64 @@ import {
   BadRequestException,
   Controller,
   Post,
+  Req,
   UploadedFile,
   UseInterceptors
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { extname } from 'path'
 
-import { getMulterStorage } from '@config'
+import { COOKIE_DEVICE_ID_NAME, getMulterStorage, removeUploadedFile } from '@config'
 import { APP_HOMEPAGE_URL, S3_PUBLIC_URL, UPLOAD_FILE_SIZE, UPLOAD_FILE_TYPES } from '@environments'
 import { helper } from '@heyform-inc/utils'
+import { AuthService, EndpointService, FormService } from '@service'
+import { isAllowedUploadField } from '@utils'
 
 const BLOCKED_UPLOAD_EXTENSIONS = new Set(['.svg', '.svgz'])
 const BLOCKED_UPLOAD_MIME_TYPES = new Set(['image/svg+xml', 'application/svg+xml'])
 
+function getUploadContextValue(
+  req: any,
+  key: 'fieldId' | 'formId' | 'openToken'
+): string | undefined {
+  const headerName = `x-heyform-${key.replace(/[A-Z]/g, matched => `-${matched.toLowerCase()}`)}`
+  const value = req.get?.(headerName) || req.query?.[key]
+  return Array.isArray(value) ? value[0] : value
+}
+
 @Controller()
 export class UploadController {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly endpointService: EndpointService,
+    private readonly formService: FormService
+  ) {}
+
   @Post('/api/upload')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
         fileSize: UPLOAD_FILE_SIZE
       },
-      fileFilter: (req: any, file: any, cb: any) => {
-        const extension = extname(file.originalname).toLowerCase()
-        const mimeType = String(file.mimetype || '').toLowerCase()
-
-        if (
-          !BLOCKED_UPLOAD_EXTENSIONS.has(extension) &&
-          !BLOCKED_UPLOAD_MIME_TYPES.has(mimeType) &&
-          UPLOAD_FILE_TYPES.includes(mimeType)
-        ) {
-          cb(null, true)
-        } else {
-          cb(new BadRequestException(`Unsupported file type ${extname(file.originalname)}`), false)
-        }
-      },
       storage: getMulterStorage()
     })
   )
-  async index(@UploadedFile() file: any): Promise<{ filename: string; url: string; size: number }> {
+  async index(
+    @Req() req: any,
+    @UploadedFile() file: any
+  ): Promise<{ filename: string; url: string; size: number }> {
+    try {
+      if (!file) {
+        throw new BadRequestException('No upload file provided')
+      }
+
+      this.assertFileTypeAllowed(file)
+      await this.assertUploadAllowed(req)
+    } catch (error) {
+      await removeUploadedFile(file)
+      throw error
+    }
+
     let url: string =
       APP_HOMEPAGE_URL.replace(/\/+$/, '') + `/static/upload/${encodeURIComponent(file.filename)}`
 
@@ -57,5 +76,63 @@ export class UploadController {
       size: file.size,
       url
     }
+  }
+
+  private assertFileTypeAllowed(file: any): void {
+    const extension = extname(file.originalname).toLowerCase()
+    const mimeType = String(file.mimetype || '').toLowerCase()
+
+    if (
+      BLOCKED_UPLOAD_EXTENSIONS.has(extension) ||
+      BLOCKED_UPLOAD_MIME_TYPES.has(mimeType) ||
+      !UPLOAD_FILE_TYPES.includes(mimeType)
+    ) {
+      throw new BadRequestException(`Unsupported file type ${extname(file.originalname)}`)
+    }
+  }
+
+  private async assertUploadAllowed(req: any): Promise<void> {
+    if (await this.isAuthenticatedRequest(req)) {
+      return
+    }
+
+    const fieldId = getUploadContextValue(req, 'fieldId')
+    const formId = getUploadContextValue(req, 'formId')
+    const openToken = getUploadContextValue(req, 'openToken')
+
+    if (!helper.isValid(formId) || !helper.isValid(openToken) || !helper.isValid(fieldId)) {
+      throw new BadRequestException('Invalid upload context')
+    }
+
+    const token = this.endpointService.decryptToken(openToken)
+
+    if (token.formId !== formId) {
+      throw new BadRequestException('Invalid upload context')
+    }
+
+    const form = await this.formService.findById(formId)
+
+    if (!form || form.suspended || form.settings?.active !== true) {
+      throw new BadRequestException('The form is not available')
+    }
+
+    if (!isAllowedUploadField(form, fieldId)) {
+      throw new BadRequestException('The upload field is not allowed')
+    }
+  }
+
+  private async isAuthenticatedRequest(req: any): Promise<boolean> {
+    const session = this.authService.getSession(req)
+    const deviceId = req.get('x-device-id') || req.cookies?.[COOKIE_DEVICE_ID_NAME]
+
+    if (
+      helper.isEmpty(session?.id) ||
+      helper.isEmpty(session?.deviceId) ||
+      deviceId !== session.deviceId
+    ) {
+      return false
+    }
+
+    return !(await this.authService.isExpired(session.id, session.deviceId))
   }
 }

@@ -51,7 +51,21 @@ const ALLOWED_ATTRIBUTES = [
   'contenteditable',
   'id'
 ]
-const UNSAFE_URL_PROTOCOL_REGEX = /^\s*(?:javascript|vbscript|data):/i
+const UNSAFE_URL_PROTOCOLS = new Set(['javascript', 'vbscript', 'data'])
+const URL_PROTOCOL_CONTROL_CHARS_REGEX = /[\u0000-\u001f\u007f\s]+/g
+
+function isUnsafeUrlProtocol(value: unknown): boolean {
+  const matched = String(value || '')
+    .trimStart()
+    .match(/^([^:]+):/)
+
+  if (!matched) {
+    return false
+  }
+
+  const protocol = matched[1].replace(URL_PROTOCOL_CONTROL_CHARS_REGEX, '').toLowerCase()
+  return UNSAFE_URL_PROTOCOLS.has(protocol)
+}
 
 function escapeText(value: unknown): string {
   return String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -75,7 +89,7 @@ function sanitizeAttributes(attributes: Record<string, any> = {}): Record<string
 
     const value = String(attributes[key] || '')
 
-    if (key === 'href' && UNSAFE_URL_PROTOCOL_REGEX.test(value)) {
+    if (key === 'href' && isUnsafeUrlProtocol(value)) {
       continue
     }
 

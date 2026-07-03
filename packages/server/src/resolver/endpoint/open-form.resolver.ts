@@ -37,6 +37,7 @@ export class OpenFormResolver {
 
     return aesEncryptObject(
       {
+        formId: form.id,
         timestamp: timestamp()
       },
       FORM_ENCRYPTION_KEY

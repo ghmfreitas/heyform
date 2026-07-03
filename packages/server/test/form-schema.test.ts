@@ -1,6 +1,6 @@
 import * as assert from 'assert'
 
-import { sanitizeFormDrafts } from '../src/utils/form-schema'
+import { isSafeCustomCSS, sanitizeFormDrafts } from '../src/utils/form-schema'
 
 function testSanitizesDraftRichText() {
   const drafts = sanitizeFormDrafts([
@@ -100,10 +100,41 @@ function testDropsUnsafeHrefProtocols() {
   assert.deepStrictEqual(drafts[0].title, [['a', ['click me']]])
 }
 
+function testDropsControlCharacterSplitUnsafeHrefProtocols() {
+  const drafts = sanitizeFormDrafts([
+    {
+      id: 'field_1',
+      kind: 'short_text',
+      title: [
+        [
+          'a',
+          ['click me'],
+          {
+            href: 'java\tscript:alert(1)'
+          }
+        ]
+      ]
+    }
+  ])
+
+  assert.deepStrictEqual(drafts[0].title, [['a', ['click me']]])
+}
+
+function testCustomCssRejectsHtmlBreakingCharacters() {
+  assert.strictEqual(isSafeCustomCSS('body { color: red; }'), true)
+  assert.strictEqual(
+    isSafeCustomCSS('body { color: red; }</style><script>alert(1)</script>'),
+    false
+  )
+  assert.strictEqual(isSafeCustomCSS('body:before { content: "<"; }'), false)
+}
+
 function run() {
   testSanitizesDraftRichText()
   testSanitizesNestedGroupDrafts()
   testDropsUnsafeHrefProtocols()
+  testDropsControlCharacterSplitUnsafeHrefProtocols()
+  testCustomCssRejectsHtmlBreakingCharacters()
 }
 
 if (require.main === module) {

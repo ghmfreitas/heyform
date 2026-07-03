@@ -84,6 +84,22 @@ test('serialize drops unsafe href protocols', () => {
   ).toBe('<a>click me</a>')
 })
 
+test('serialize drops unsafe href protocols split by control characters', () => {
+  for (const href of ['java\tscript:alert(1)', 'java\nscript:alert(1)', 'vb\rscript:alert(1)']) {
+    expect(
+      htmlUtils.serialize([
+        [
+          'a',
+          ['click me'],
+          {
+            href
+          }
+        ]
+      ])
+    ).toBe('<a>click me</a>')
+  }
+})
+
 test('plain html', () => {
   expect(
     htmlUtils.plain(

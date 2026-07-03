@@ -1,4 +1,5 @@
-import { S3Client } from '@aws-sdk/client-s3'
+import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { promises as fs } from 'fs'
 import { mkdirpSync, pathExistsSync } from 'fs-extra'
 import { diskStorage } from 'multer'
 import * as multerS3 from 'multer-s3'
@@ -13,6 +14,17 @@ import {
 } from '@environments'
 import { helper, nanoid } from '@heyform-inc/utils'
 
+function getS3Client(): S3Client {
+  return new S3Client({
+    endpoint: S3_ENDPOINT,
+    region: S3_REGION,
+    credentials: {
+      accessKeyId: S3_ACCESS_KEY_ID,
+      secretAccessKey: S3_SECRET_ACCESS_KEY
+    }
+  })
+}
+
 export function getMulterStorage() {
   if (
     helper.isValid(S3_ENDPOINT) &&
@@ -21,17 +33,8 @@ export function getMulterStorage() {
     helper.isValid(S3_ACCESS_KEY_ID) &&
     helper.isValid(S3_SECRET_ACCESS_KEY)
   ) {
-    const s3 = new S3Client({
-      endpoint: S3_ENDPOINT,
-      region: S3_REGION,
-      credentials: {
-        accessKeyId: S3_ACCESS_KEY_ID,
-        secretAccessKey: S3_SECRET_ACCESS_KEY
-      }
-    })
-
     return multerS3({
-      s3,
+      s3: getS3Client(),
       acl: 'public-read',
       bucket: S3_BUCKET,
       metadata: (req: any, file: any, cb: any) => {
@@ -57,4 +60,24 @@ export function getMulterStorage() {
       cb(null, `${nanoid(12)}-${file.originalname}`)
     }
   })
+}
+
+export async function removeUploadedFile(file: any): Promise<void> {
+  if (helper.isEmpty(file)) {
+    return
+  }
+
+  if (helper.isValid(file.bucket) && helper.isValid(file.key)) {
+    await getS3Client().send(
+      new DeleteObjectCommand({
+        Bucket: file.bucket,
+        Key: file.key
+      })
+    )
+    return
+  }
+
+  if (helper.isValid(file.path)) {
+    await fs.unlink(file.path).catch(() => undefined)
+  }
 }

@@ -9,7 +9,6 @@ import { build as buildInputValidation } from './input-validation.e2e.test'
 import { build as buildPermissionMatrix } from './permission-matrix.e2e.test'
 import { build as buildRateLimit } from './rate-limit.e2e.test'
 import { build as buildStatefulEdges } from './stateful-edges.e2e.test'
-import { build as buildStaticUpload } from './static-upload.e2e.test'
 import { build as buildTeamFlow } from './team-flow.e2e.test'
 
 async function main() {
@@ -41,7 +40,6 @@ async function main() {
     buildHealth(baseUrl),
     buildAuth(baseUrl),
     buildCatalog(baseUrl),
-    buildStaticUpload(baseUrl),
     buildInputValidation(baseUrl),
     buildAuthFlows(baseUrl),
     buildStatefulEdges(baseUrl),

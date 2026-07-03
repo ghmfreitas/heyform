@@ -10,7 +10,7 @@ import { Readable } from 'stream'
 import { ALLOWED_IMAGE_HOSTS, FIRST_PARTY_IMAGE_ORIGINS, ImageResizingDto } from '@dto'
 import { UPLOAD_DIR } from '@environments'
 import { qs } from '@heyform-inc/utils'
-import { Logger, assertSafeOutboundUrl, md5 } from '@utils'
+import { Logger, assertSafeOutboundRequest, md5 } from '@utils'
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
@@ -33,7 +33,7 @@ export class ImageController {
       return createReadStream(filePath).pipe(res)
     }
 
-    const url = await assertSafeOutboundUrl(input.url, {
+    const { lookup, url } = await assertSafeOutboundRequest(input.url, {
       allowedHosts: ALLOWED_IMAGE_HOSTS,
       allowedPrivateOrigins: FIRST_PARTY_IMAGE_ORIGINS
     })
@@ -43,6 +43,7 @@ export class ImageController {
     try {
       result = await got(url.toString(), {
         followRedirect: false,
+        lookup,
         responseType: 'buffer',
         retry: {
           limit: 0

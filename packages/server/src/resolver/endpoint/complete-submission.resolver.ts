@@ -22,7 +22,7 @@ import {
   SubmissionIpLimitService,
   SubmissionService
 } from '@service'
-import { ClientInfo, GqlClient } from '@utils'
+import { ClientInfo, GqlClient, normalizeSubmissionHiddenFields } from '@utils'
 
 @Resolver()
 @UseGuards(EndpointAnonymousIdGuard)
@@ -92,7 +92,13 @@ export class CompleteSubmissionResolver {
     }
 
     // Start submit time
-    const { timestamp: startAt } = this.endpointService.decryptToken(input.openToken)
+    const openToken = this.endpointService.decryptToken(input.openToken)
+
+    if (openToken.formId !== input.formId) {
+      throw new BadRequestException('Invalid form token')
+    }
+
+    const { timestamp: startAt } = openToken
 
     // Bot prevention check
     if (form.settings?.captchaKind !== CaptchaKindEnum.NONE) {
@@ -149,7 +155,7 @@ export class CompleteSubmissionResolver {
       category,
       title: form.name,
       answers,
-      hiddenFields: input.hiddenFields,
+      hiddenFields: normalizeSubmissionHiddenFields(form.hiddenFields, input.hiddenFields),
       variables,
       startAt,
       endAt,
